@@ -1,0 +1,236 @@
+---
+title: "H3K4me1 vs H3K27ac"
+author: "Chenghao Zhu"
+date: "1/6/2020"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(rtracklayer)
+library(biomaRt)
+library(ggplot2)
+theme_set(theme_classic())
+```
+
+Read narrowPeaks
+
+```{r}
+h3k4me1_tx = import(
+    gzfile("data/H3K4me1_SR8278.merged.nodup_x_ctl_for_rep1.pval0.01.500K.narrowPeak.gz"),
+    format = "narrowPeak"
+)
+h3k4me1_tx = h3k4me1_tx[h3k4me1_tx$qValue > 2]
+h3k27ac_tx = import(
+    gzfile("data/H3K27ac_SR8278.merged.nodup_x_ctl_for_rep1.pval0.01.500K.narrowPeak.gz"),
+    format = "narrowPeak"
+)
+h3k27ac_tx = h3k27ac_tx[h3k27ac_tx$qValue > 2]
+h3k4me1_ve = import(
+    gzfile("data/H3K4me1_Vehicle.merged.nodup_x_ctl_for_rep2.pval0.01.500K.narrowPeak.gz"),
+    format = "narrowPeak"
+)
+h3k4me1_ve = h3k4me1_ve[h3k4me1_ve$qValue > 2]
+h3k27ac_ve = import(
+    gzfile("data/H3K27ac_Vehicle.merged.nodup_x_ctl_for_rep2.pval0.01.500K.narrowPeak.gz"),
+    format = "narrowPeak"
+)
+h3k27ac_ve = h3k27ac_ve[h3k27ac_ve$qValue > 2]
+```
+
+## Find overlap peaks
+
+```{r}
+overlaps_tx = findOverlapPairs(h3k27ac_tx, h3k4me1_tx)
+overlaps_tx
+```
+
+There are 12,963 overlapped peaks between h3k27ac and h3k4me1 after treatment. 
+
+```{r}
+overlaps_ve = findOverlapPairs(h3k27ac_ve, h3k27ac_ve)
+overlaps_ve
+```
+
+There are 82,684 overlapped peaks between h3k27ac and h3k4me1 in control. 
+
+```{r}
+h3k27ac_tx_overlap = length(unique(overlaps_tx@first$name))
+h3k4me1_tx_overlap = length(unique(overlaps_tx@second$name))
+h3k27ac_ve_overlap = length(unique(overlaps_ve@first$name))
+h3k4me1_ve_overlap = length(unique(overlaps_ve@second$name))
+data.frame(
+    modification = c("h3k27ac", "h3k27ac", "h3k4me1", "h3k4me1", 
+                "h3k27ac", "h3k27ac", "h3k4me1", "h3k4me1"),
+    type = c("unique", "overlap", "unique", "overlap",
+             "unique", "overlap", "unique", "overlap"),
+    treatment = rep(c("tx", "ve"), each = 4),
+    npeaks = c(length(h3k27ac_tx) - h3k27ac_tx_overlap, h3k27ac_tx_overlap, 
+               length(h3k4me1_tx) - h3k4me1_tx_overlap, h3k4me1_tx_overlap,
+               length(h3k27ac_ve) - h3k27ac_ve_overlap, h3k27ac_ve_overlap, 
+               length(h3k4me1_ve) - h3k4me1_ve_overlap, h3k4me1_ve_overlap),
+    anno.y = c((length(h3k27ac_tx) - h3k27ac_tx_overlap)/2 + h3k27ac_tx_overlap, 
+               h3k27ac_tx_overlap/2, 
+               (length(h3k4me1_tx) - h3k4me1_tx_overlap)/2 + h3k4me1_tx_overlap, 
+               h3k4me1_tx_overlap/2,
+               (length(h3k27ac_ve) - h3k27ac_ve_overlap)/2 + h3k27ac_ve_overlap, 
+               h3k27ac_ve_overlap/2, 
+               (length(h3k4me1_ve) - h3k4me1_ve_overlap)/2 + h3k4me1_ve_overlap, 
+               h3k4me1_ve_overlap/2)
+) %>%
+    mutate(type = relevel(type, ref = "unique"),
+           anno.y = anno.y + 100) %>%
+    ggplot(aes(x = modification, y = npeaks, fill = type)) +
+    geom_col(width = 0.5) +
+    geom_text(aes(y = anno.y, label = npeaks)) +
+    facet_grid(cols = vars(treatment))
+```
+
+For SR8278 treatment, h3k27ac has in total of 84,419 peaks, of which 11,571 overlaps with at least one peak from h3k4m21. h3k4me1 has in total of 93,660 peak, of which 12,353 overlaps with at least one peak from h3k27ac. As for vehicel control, h3k27ac has 82,684 peaks and all of them overlap with a peak from h3k4me1.
+
+The total number of peaks in h3k27ac overlap with h3k4me1 does not match with that of h3k4me1 with h3k27ac, because some peaks overlaps with more than one peak from the other modification.
+
+```{r}
+df = merge(
+    as.data.frame(table(overlaps_tx@first@seqnames@values)),
+    as.data.frame(table(overlaps_ve@first@seqnames@values)),
+    by = "Var1"
+)
+colnames(df) = c("chrom", "tx", "ve")
+df %>% filter(chrom %in% paste0("chr", c(1:22, "X", "Y"))) %>% 
+    arrange(ve) %>% 
+    mutate(chrom = factor(chrom, levels = chrom)) %>%
+    melt(id.vars = "chrom", value.name = "freq") %>%
+    ggplot() + geom_col(aes(x = chrom, y = freq, fill = variable), position = "dodge") +
+    coord_flip()
+```
+
+```{r, eval=FALSE, include=FALSE, echo=FALSE}
+overlap_size = sapply(seq_along(overlaps_ve), function(i){
+    start1 = start(overlaps_ve@first[i])
+    end1 = end(overlaps_ve@first[i])
+    start2 = start(overlaps_ve@second[i])
+    end2 = end(overlaps_ve@second[i])
+    if(start1 < start2 & end1 > end2){
+        return(end2 - start2)
+    } else if(start1 > start2 & end1 < end2){
+        return(end1 - start1)
+    } else {
+        return(min(end1 - start2, end2 - start1))
+    }
+})
+
+overlap_df = data.frame(
+    size = overlap_size,
+    peak_dist = abs(start(overlaps_ve@first) + overlaps_ve@first$peak - (start(overlaps_ve@second) + overlaps_ve@second$peak))
+)
+hist(overlap_size, breaks = 25)
+barplot(head(sort(table(overlap_size), decreasing = TRUE), 10))
+```
+
+## Gene annotation
+
+Obtain gene annotations
+
+```{r}
+chroms_ensembl = seqlevels(h3k27ac_tx)
+chroms = gsub("^chr", "", chroms_ensembl)
+chroms = gsub("^.+?_", "", chroms)
+chroms = gsub("_.+$", "", chroms)
+chroms = gsub("v([0-9])$", "\\.\\1", chroms)
+
+ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+anno = getBM(
+    mart = ensembl,
+    filter = "chromosome_name",
+    values = chroms,
+    attributes = c("chromosome_name", "start_position", "end_position", 
+                   "ensembl_gene_id", "external_gene_name", "gene_biotype")
+)
+
+anno_granges = GRanges(
+    seqnames = chroms_ensembl[match(anno$chromosome_name, chroms)],
+    ranges = IRanges(
+        start = anno$start_position,
+        end = anno$end_position,
+        names = anno$ensembl_gene_id
+    ),
+    gene_name = anno$external_gene_name,
+    gene_type = anno$gene_biotype
+)
+```
+
+```{r}
+tx_ranges = lapply(seq_along(overlaps_tx), function(i){
+    start1 = start(overlaps_tx@first[i])
+    end1 = end(overlaps_tx@first[i])
+    start2 = start(overlaps_tx@second[i])
+    end2 = end(overlaps_tx@second[i])
+    res = c(min(start1, start2),
+            max(end1, end2))
+    names(res) = c("start", "end")
+    return(res)
+}) %>%
+    do.call(rbind, .)
+tx_granges = GRanges(seqnames = overlaps_tx@first@seqnames, 
+                     ranges = IRanges(start = tx_ranges[,1], end = tx_ranges[,2]))
+anno_tx_overlaps = findOverlaps(tx_granges, anno_granges)
+anno_tx = anno_granges
+anno_tx$n_overlap = as.integer(table(anno_tx_overlaps@to)[as.character(1:length(anno_tx))])
+anno_tx = anno_tx[which(!is.na(anno_tx$n_overlap))]
+anno_tx = anno_tx[order(anno_tx$n_overlap, decreasing = TRUE)]
+anno_tx
+```
+
+```{r}
+ve_ranges = lapply(seq_along(overlaps_ve), function(i){
+    start1 = start(overlaps_ve@first[i])
+    end1 = end(overlaps_ve@first[i])
+    start2 = start(overlaps_ve@second[i])
+    end2 = end(overlaps_ve@second[i])
+    res = c(min(start1, start2),
+            max(end1, end2))
+    names(res) = c("start", "end")
+    return(res)
+}) %>%
+    do.call(rbind, .)
+ve_granges = GRanges(seqnames = overlaps_ve@first@seqnames, 
+                     ranges = IRanges(start = ve_ranges[,1], end = ve_ranges[,2]))
+anno_ve_overlaps = findOverlaps(ve_granges, anno_granges)
+anno_ve = anno_granges
+anno_ve$n_overlap = as.integer(table(anno_ve_overlaps@to)[as.character(1:length(anno_ve))])
+anno_ve = anno_ve[which(!is.na(anno_ve$n_overlap))]
+anno_ve = anno_ve[order(anno_ve$n_overlap, decreasing = TRUE)]
+anno_ve
+```
+
+```{r}
+df = merge(
+    data.frame(gene_name = anno_tx$gene_name, 
+               n_overlap = anno_tx$n_overlap), 
+    data.frame(gene_name = anno_ve$gene_name, 
+               n_overlap = anno_ve$n_overlap),
+    by = "gene_name", 
+)
+colnames(df) = c("gene_name", "tx", "ve")
+df = mutate(df, diff = ve - tx) %>%
+    arrange(desc(diff))
+df
+```
+
+```{r}
+df %>% head(20) %>%
+    dplyr::select(-diff) %>%
+    mutate(gene_name = factor(gene_name, levels = gene_name)) %>%
+    melt(id.vars = "gene_name", variable.name = "treatment", value.name = "npeak") %>%
+    ggplot() +
+    geom_col(aes(gene_name, npeak, fill = treatment), position = "dodge") +
+    coord_flip()
+```
+
