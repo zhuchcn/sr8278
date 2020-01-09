@@ -247,7 +247,7 @@ library(org.Hs.eg.db)
 gene_down = bitr(gene_df$gene_id[gene_df$diff > 0], fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
 gene_bg = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
 ego = enrichGO(
-    gene = gene_ids$ENTREZID,
+    gene = gene_down$ENTREZID,
     OrgDb = org.Hs.eg.db,
     ont = "ALL",
     pvalueCutoff = 0.01,
