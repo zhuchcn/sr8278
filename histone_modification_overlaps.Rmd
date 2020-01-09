@@ -254,11 +254,15 @@ ego = enrichGO(
     qvalueCutoff = 0.05,
     readable = TRUE
 )
+write.table(ego@result, file = "go_enrichment.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ego@result %>% dplyr::select(-ID, -geneID) %>% 
     DT::datatable() %>%
     DT::formatSignif(columns = 5:7, digits = 3)
 ```
 
+Download the go enrichment table:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment.txt" class="btn btn-primary">Download</a>
 
 ## Export data
 
