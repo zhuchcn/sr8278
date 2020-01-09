@@ -211,26 +211,54 @@ anno_ve
 ```
 
 ```{r}
-df = merge(
-    data.frame(gene_name = anno_tx$gene_name, 
-               n_overlap = anno_tx$n_overlap), 
-    data.frame(gene_name = anno_ve$gene_name, 
-               n_overlap = anno_ve$n_overlap),
-    by = "gene_name", 
+gene_df = left_join(
+    data.frame(gene_id   = names(anno_ve),
+               gene_name = anno_ve$gene_name, 
+               n_overlap = anno_ve$n_overlap,
+               stringsAsFactors = FALSE),
+    data.frame(gene_id   = names(anno_tx),
+               gene_name = anno_tx$gene_name, 
+               n_overlap = anno_tx$n_overlap,
+               stringsAsFactors = FALSE), 
+    by = c("gene_id", "gene_name"), 
 )
-colnames(df) = c("gene_name", "tx", "ve")
-df = mutate(df, diff = ve - tx) %>%
+gene_df$n_overlap.y[is.na(gene_df$n_overlap.y)] = 0
+colnames(gene_df) = c("gene_id", "gene_name", "ve", "tx")
+gene_df = mutate(gene_df, diff = ve - tx) %>%
     arrange(desc(diff))
-df
+gene_df
 ```
 
 ```{r}
-df %>% head(20) %>%
-    dplyr::select(-diff) %>%
+gene_df %>% head(20) %>%
+    dplyr::select(-diff, -gene_id) %>%
     mutate(gene_name = factor(gene_name, levels = gene_name)) %>%
     melt(id.vars = "gene_name", variable.name = "treatment", value.name = "npeak") %>%
     ggplot() +
     geom_col(aes(gene_name, npeak, fill = treatment), position = "dodge") +
     coord_flip()
 ```
+
+## GO enrichment
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+gene_down = bitr(gene_df$gene_id[gene_df$diff > 0], fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+gene_bg = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+ego = enrichGO(
+    gene = gene_ids$ENTREZID,
+    OrgDb = org.Hs.eg.db,
+    ont = "ALL",
+    pvalueCutoff = 0.01,
+    qvalueCutoff = 0.05,
+    readable = TRUE
+)
+ego@result %>% dplyr::select(-ID, -geneID) %>% 
+    DT::datatable() %>%
+    DT::formatSignif(columns = 5:7, digits = 3)
+```
+
+
+
 
