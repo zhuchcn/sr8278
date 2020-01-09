@@ -226,7 +226,7 @@ gene_df$n_overlap.y[is.na(gene_df$n_overlap.y)] = 0
 colnames(gene_df) = c("gene_id", "gene_name", "ve", "tx")
 gene_df = mutate(gene_df, diff = ve - tx) %>%
     arrange(desc(diff))
-gene_df
+gene_df 
 ```
 
 ```{r}
