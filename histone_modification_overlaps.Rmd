@@ -260,5 +260,18 @@ ego@result %>% dplyr::select(-ID, -geneID) %>%
 ```
 
 
+## Export data
 
+```{r}
+library(jsonlite)
+names(gene_df)[3:4] = c("npeaks_vs", "npeaks_tx")
+entrez = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = c("ENSEMBL", "ENTREZID"), OrgDb = org.Hs.eg.db)
+ggo = enrichGO(entrez$ENTREZID, OrgDb = org.Hs.eg.db, ont = "ALL", readable = TRUE)
+write.table(gene_df, "gene_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+write.table(entrez, "gene_entrezid.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+write_json(ggo@geneSets, "go_geneset.json")
+```
 
+Download the result table:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table_goids.txt" class="btn btn-primary">Download</a>
