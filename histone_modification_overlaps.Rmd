@@ -263,8 +263,8 @@ Download the result table:
 ## peak regions
 
 ```{r message=FALSE, warning=FALSE}
-peakAnno_tx = annotatePeak(tx_granges, TxDb = TxDb.Hsapiens.UCSC.hg19.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
-peakAnno_ve = annotatePeak(ve_granges, TxDb = TxDb.Hsapiens.UCSC.hg19.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
+peakAnno_tx = annotatePeak(tx_granges, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
+peakAnno_ve = annotatePeak(ve_granges, TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
 data.frame(
     Feature = peakAnno_tx@annoStat$Feature,
     tx = peakAnno_tx@annoStat$Frequency * peakAnno_tx@peakNum,
@@ -289,7 +289,7 @@ data.frame(
 ```{r}
 rep1 = read.table("data/rep1SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
 rep2 = read.table("data/rep2SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
-fpmk = data.frame(
+fpkm = data.frame(
     gene_id = rep1$gene_id,
     `48h` = rep1$FPKM,
     con = rep2$FPKM
@@ -297,14 +297,35 @@ fpmk = data.frame(
     filter(X48h != 0 & con != 0) %>%
     mutate(gene_id = gsub("\\.[0-9]+$", "", gene_id))
 # down_reg_genes = fpmk$gene_id[fpmk$X48h < fpmk$con]
-gene_df = left_join(gene_df, fpmk, by = "gene_id")
-gene_df = filter(gene_df, X48h < con)
-gene_df$fpmk_diff = gene_df$fpmk_con - gene_df$fpmk_48h
-colnames(gene_df) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpmk_48h", "fpmk_con", "fpmk_diff")
-write.table(gene_df, file = "gene_table_npeaks_fpmk.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+gene_df2 = left_join(gene_df, fpkm, by = "gene_id") %>% 
+    filter(X48h < con & diff > 0) %>%
+    mutate(fpkm_diff = con - X48h)
+colnames(gene_df2) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpkm_48h", "fpkm_con", "fpkm_diff")
+# write.table(gene_df2, file = "gene_table_npeaks_fpmk.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
 
 Download the gene table with histone modification npeaks and RNAseq fpmk:
 
 <a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table_npeaks_fpmk.txt" class="btn btn-primary">Download</a>
+
+```{r}
+gene_down = bitr(gene_df2$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+gene_bg = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+ego = enrichGO(
+    gene = gene_down$ENTREZID,
+    OrgDb = org.Hs.eg.db,
+    ont = "ALL",
+    pvalueCutoff = 0.01,
+    qvalueCutoff = 0.05,
+    readable = TRUE
+)
+write.table(ego@result, file = "go_enrichment_chipseq_vs_rnaseq.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+ego@result %>% dplyr::select(-ID, -geneID) %>% 
+    DT::datatable() %>%
+    DT::formatSignif(columns = 5:7, digits = 3)
+```
+
+Download the go enrichment result of genes that may decrease in me1 and 27ac histone modification and may decrease in gene expression:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment_chipseq_vs_rnaseq.txt" class="btn btn-primary">Download</a>
