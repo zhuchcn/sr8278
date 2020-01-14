@@ -14,6 +14,9 @@ library(dplyr)
 library(reshape2)
 library(ggplot2)
 library(rtracklayer)
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(org.Hs.eg.db)
 library(biomaRt)
 library(ggplot2)
 theme_set(theme_classic())
@@ -111,29 +114,6 @@ df %>% filter(chrom %in% paste0("chr", c(1:22, "X", "Y"))) %>%
     coord_flip()
 ```
 
-```{r, eval=FALSE, include=FALSE, echo=FALSE}
-overlap_size = sapply(seq_along(overlaps_ve), function(i){
-    start1 = start(overlaps_ve@first[i])
-    end1 = end(overlaps_ve@first[i])
-    start2 = start(overlaps_ve@second[i])
-    end2 = end(overlaps_ve@second[i])
-    if(start1 < start2 & end1 > end2){
-        return(end2 - start2)
-    } else if(start1 > start2 & end1 < end2){
-        return(end1 - start1)
-    } else {
-        return(min(end1 - start2, end2 - start1))
-    }
-})
-
-overlap_df = data.frame(
-    size = overlap_size,
-    peak_dist = abs(start(overlaps_ve@first) + overlaps_ve@first$peak - (start(overlaps_ve@second) + overlaps_ve@second$peak))
-)
-hist(overlap_size, breaks = 25)
-barplot(head(sort(table(overlap_size), decreasing = TRUE), 10))
-```
-
 ## Gene annotation
 
 Obtain gene annotations
@@ -229,6 +209,7 @@ gene_df = mutate(gene_df, diff = ve - tx) %>%
 gene_df 
 ```
 
+
 ```{r}
 gene_df %>% head(20) %>%
     dplyr::select(-diff, -gene_id) %>%
@@ -243,7 +224,6 @@ gene_df %>% head(20) %>%
 
 ```{r}
 library(clusterProfiler)
-library(org.Hs.eg.db)
 gene_down = bitr(gene_df$gene_id[gene_df$diff > 0], fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
 gene_bg = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
 ego = enrichGO(
@@ -279,3 +259,52 @@ write_json(ggo@geneSets, "go_geneset.json")
 Download the result table:
 
 <a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table_goids.txt" class="btn btn-primary">Download</a>
+
+## peak regions
+
+```{r message=FALSE, warning=FALSE}
+peakAnno_tx = annotatePeak(tx_granges, TxDb = TxDb.Hsapiens.UCSC.hg19.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
+peakAnno_ve = annotatePeak(ve_granges, TxDb = TxDb.Hsapiens.UCSC.hg19.knownGene, annoDb = "org.Hs.eg.db", level = "gene")
+data.frame(
+    Feature = peakAnno_tx@annoStat$Feature,
+    tx = peakAnno_tx@annoStat$Frequency * peakAnno_tx@peakNum,
+    ve = peakAnno_ve@annoStat$Frequency * peakAnno_ve@peakNum
+) %>%
+    arrange(ve) %>%
+    mutate(Feature = factor(Feature, levels = Feature)) %>%
+    melt(id.vars = "Feature") %>%
+    ggplot() +
+    geom_col(aes(x = Feature, y = value, fill = variable), position = "dodge") +
+    geom_text(aes(x = Feature, y = value + max(value)/15, 
+                  label = formatC(value, format = "e", digit = 1), color = variable), 
+              position = position_dodge(width = 1), size = 3) +
+    coord_flip() +
+    labs(y = "num peaks")
+```
+
+
+
+## RNAseq data
+
+```{r}
+rep1 = read.table("data/rep1SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
+rep2 = read.table("data/rep2SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
+fpmk = data.frame(
+    gene_id = rep1$gene_id,
+    `48h` = rep1$FPKM,
+    con = rep2$FPKM
+) %>% filter(grepl("^ENSG", gene_id)) %>%
+    filter(X48h != 0 & con != 0) %>%
+    mutate(gene_id = gsub("\\.[0-9]+$", "", gene_id))
+# down_reg_genes = fpmk$gene_id[fpmk$X48h < fpmk$con]
+gene_df = left_join(gene_df, fpmk, by = "gene_id")
+gene_df = filter(gene_df, X48h < con)
+gene_df$fpmk_diff = gene_df$fpmk_con - gene_df$fpmk_48h
+colnames(gene_df) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpmk_48h", "fpmk_con", "fpmk_diff")
+write.table(gene_df, file = "gene_table_npeaks_fpmk.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+Download the gene table with histone modification npeaks and RNAseq fpmk:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table_npeaks_fpmk.txt" class="btn btn-primary">Download</a>
