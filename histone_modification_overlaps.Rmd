@@ -15,6 +15,7 @@ library(reshape2)
 library(ggplot2)
 library(rtracklayer)
 library(ChIPseeker)
+library(clusterProfiler)
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 library(org.Hs.eg.db)
 library(biomaRt)
@@ -234,7 +235,7 @@ ego = enrichGO(
     qvalueCutoff = 0.05,
     readable = TRUE
 )
-write.table(ego@result, file = "go_enrichment.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+# write.table(ego@result, file = "go_enrichment.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ego@result %>% dplyr::select(-ID, -geneID) %>% 
     DT::datatable() %>%
     DT::formatSignif(columns = 5:7, digits = 3)
@@ -251,9 +252,9 @@ library(jsonlite)
 names(gene_df)[3:4] = c("npeaks_vs", "npeaks_tx")
 entrez = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = c("ENSEMBL", "ENTREZID"), OrgDb = org.Hs.eg.db)
 ggo = enrichGO(entrez$ENTREZID, OrgDb = org.Hs.eg.db, ont = "ALL", readable = TRUE)
-write.table(gene_df, "gene_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
-write.table(entrez, "gene_entrezid.txt", sep = "\t", row.names = FALSE, quote = FALSE)
-write_json(ggo@geneSets, "go_geneset.json")
+# write.table(gene_df, "gene_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+# write.table(entrez, "gene_entrezid.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+# write_json(ggo@geneSets, "go_geneset.json")
 ```
 
 Download the result table:
@@ -286,10 +287,12 @@ data.frame(
 
 ## RNAseq data
 
+### 8278 48h
+
 ```{r}
-rep1 = read.table("data/rep1SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
-rep2 = read.table("data/rep2SE_unstranded_anno_rsem.genes.results", sep = "\t", header = TRUE)
-fpkm = data.frame(
+rep1 = read.table("data/rsem_genes_results-8278_48h.txt", sep = "\t", header = TRUE)
+rep2 = read.table("data/rsem_genes_results-8278_CON.txt", sep = "\t", header = TRUE)
+fpkm_48h = data.frame(
     gene_id = rep1$gene_id,
     `48h` = rep1$FPKM,
     con = rep2$FPKM
@@ -297,22 +300,22 @@ fpkm = data.frame(
     filter(X48h != 0 & con != 0) %>%
     mutate(gene_id = gsub("\\.[0-9]+$", "", gene_id))
 # down_reg_genes = fpmk$gene_id[fpmk$X48h < fpmk$con]
-gene_df2 = left_join(gene_df, fpkm, by = "gene_id") %>% 
+gene_48h = left_join(gene_df, fpkm_48h, by = "gene_id") %>% 
     filter(X48h < con & diff > 0) %>%
     mutate(fpkm_diff = con - X48h)
-colnames(gene_df2) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpkm_48h", "fpkm_con", "fpkm_diff")
-# write.table(gene_df2, file = "gene_table_npeaks_fpmk.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+colnames(gene_48h) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpkm_48h", "fpkm_con", "fpkm_diff")
+write.table(gene_48h, file = "gene_table-npeaks_fpmk-27ac_me1_vs_8278_48h.txt", sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
 
 Download the gene table with histone modification npeaks and RNAseq fpmk:
 
-<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table_npeaks_fpmk.txt" class="btn btn-primary">Download</a>
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table-npeaks_fpmk-27ac_me1_vs_8278_48h.txt" class="btn btn-primary">Download</a>
 
 ```{r}
-gene_down = bitr(gene_df2$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
-gene_bg = bitr(gene_df$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
-ego = enrichGO(
+gene_down = bitr(gene_48h$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+gene_bg = bitr(gene_48h$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+ego_48h = enrichGO(
     gene = gene_down$ENTREZID,
     OrgDb = org.Hs.eg.db,
     ont = "ALL",
@@ -320,12 +323,105 @@ ego = enrichGO(
     qvalueCutoff = 0.05,
     readable = TRUE
 )
-write.table(ego@result, file = "go_enrichment_chipseq_vs_rnaseq.txt", sep = "\t", quote = FALSE, row.names = FALSE)
-ego@result %>% dplyr::select(-ID, -geneID) %>% 
+write.table(ego_48h@result, file = "go_enrichment-27ac_me1_vs_8278_48h.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+ego_48h@result %>% dplyr::select(-ID, -geneID) %>% 
     DT::datatable() %>%
     DT::formatSignif(columns = 5:7, digits = 3)
 ```
 
 Download the go enrichment result of genes that may decrease in me1 and 27ac histone modification and may decrease in gene expression:
 
-<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment_chipseq_vs_rnaseq.txt" class="btn btn-primary">Download</a>
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment-27ac_me1_vs_8278_48h.txt" class="btn btn-primary">Download</a>
+
+### 8278 24h
+
+```{r}
+rep1 = read.table("data/rsem_genes_results-8278_24h.txt", sep = "\t", header = TRUE)
+rep2 = read.table("data/rsem_genes_results-8278_CON.txt", sep = "\t", header = TRUE)
+fpkm_24h = data.frame(
+    gene_id = rep1$gene_id,
+    `24h` = rep1$FPKM,
+    con = rep2$FPKM
+) %>% filter(grepl("^ENSG", gene_id)) %>%
+    filter(X24h != 0 & con != 0) %>%
+    mutate(gene_id = gsub("\\.[0-9]+$", "", gene_id))
+gene_24h = left_join(gene_df, fpkm_24h, by = "gene_id") %>% 
+    filter(X24h < con & diff > 0) %>%
+    mutate(fpkm_diff = con - X24h)
+colnames(gene_24h) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpkm_24h", "fpkm_con", "fpkm_diff")
+write.table(gene_24h, file = "gene_table-npeaks_fpmk-27ac_me1_vs_8278_24h.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+Download the gene table with histone modification npeaks and RNAseq fpmk:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table-npeaks_fpmk-27ac_me1_vs_8278_24h.txt" class="btn btn-primary">Download</a>
+
+```{r}
+gene_down = bitr(gene_24h$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+gene_bg = bitr(gene_24h$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+ego_24h = enrichGO(
+    gene = gene_down$ENTREZID,
+    OrgDb = org.Hs.eg.db,
+    ont = "ALL",
+    pvalueCutoff = 0.01,
+    qvalueCutoff = 0.05,
+    readable = TRUE
+)
+write.table(ego_24h@result, file = "go_enrichment-27ac_me1_vs_8278_24h.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+ego_24h@result %>% dplyr::select(-ID, -geneID) %>% 
+    DT::datatable() %>%
+    DT::formatSignif(columns = 5:7, digits = 3)
+```
+
+Download the go enrichment result of genes that may decrease in me1 and 27ac histone modification and may decrease in gene expression:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment-27ac_me1_vs_8278_24h.txt" class="btn btn-primary">Download</a>
+
+### sh rev (don't even know what that means)
+
+```{r}
+sh4 = read.table("data/rsem_genes_results-sh4_rev.txt", sep = "\t", header = TRUE)
+sh5 = read.table("data/rsem_genes_results-sh5_rev.txt", sep = "\t", header = TRUE)
+sicon = read.table("data/rsem_genes_results-sicon_rev.txt", sep = "\t", header = TRUE)
+fpkm_sh = data.frame(
+    gene_id = sh4$gene_id,
+    sh4 = sh4$FPKM,
+    sh5 = sh5$FPKM,
+    sicon = sicon$FPKM
+) %>% filter(grepl("^ENSG", gene_id)) %>%
+    filter(sh4 != 0 & sh5 != 0 & sicon != 0) %>%
+    mutate(gene_id = gsub("\\.[0-9]+$", "", gene_id))
+gene_sh = left_join(gene_df, fpkm_sh, by = "gene_id") %>% 
+    filter(sh4 < sicon & sh5 < sicon & diff > 0) %>%
+    mutate(fpkm_diff_sh4 = sicon - sh4, fpkm_diff_sh5 = sicon - sh5)
+colnames(gene_sh) = c("gene_id", "gene_name", "npeaks_ve", "npeaks_tx", "npeaks_diff", "fpkm_sh4", "fpkm_sh5", "fpkm_sicon", "fpkm_diff_sh4", "fpkm_diff_sh5")
+write.table(gene_sh, file = "gene_table-npeaks_fpmk-27ac_me1_vs_sh_rev.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+
+Download the gene table with histone modification npeaks and RNAseq fpmk:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/gene_table-npeaks_fpmk-27ac_me1_vs_sh_rev.txt" class="btn btn-primary">Download</a>
+
+```{r}
+gene_down = bitr(gene_sh$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+gene_bg = bitr(gene_sh$gene_id, fromType = "ENSEMBL", toType = "ENTREZID", OrgDb = org.Hs.eg.db, drop = TRUE)
+ego_sh = enrichGO(
+    gene = gene_down$ENTREZID,
+    OrgDb = org.Hs.eg.db,
+    ont = "ALL",
+    pvalueCutoff = 0.01,
+    qvalueCutoff = 0.05,
+    readable = TRUE
+)
+write.table(ego_sh@result, file = "go_enrichment-27ac_me1_vs_sh_rev.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+ego_sh@result %>% dplyr::select(-ID, -geneID) %>% 
+    DT::datatable() %>%
+    DT::formatSignif(columns = 5:7, digits = 3)
+```
+
+Download the go enrichment result of genes that may decrease in me1 and 27ac histone modification and may decrease in gene expression:
+
+<a href="https://raw.githubusercontent.com/zhuchcn/sr8278/master/go_enrichment-27ac_me1_vs_sh_rev.txt" class="btn btn-primary">Download</a>
+
